@@ -54,13 +54,27 @@ Key Bindings
 
 
 Navigation:
-h / l: Switch between panes.
-j / k: Move up/down in the current pane.
+
+
+`h / l`: Switch between panes.
+
+
+`j / k`: Move up/down in the current pane.
+
 
 Actions:
 
+
 Enter: Run the selected test.
-w: Toggle watch mode.
-q: Quit the application.
-y: Copy debug contents or test output to clipboard.
+
+
+`w`: Toggle watch mode.
+
+
+`q`: Quit the application.
+
+
+`y`: Copy debug contents or test output to clipboard.
+
+
 
