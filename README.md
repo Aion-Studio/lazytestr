@@ -2,6 +2,8 @@
 # lazytestr
 
 `lazytestr` is a command-line utility  designed to help manage and run tests with an intuitive terminal UI. This tool scans for test files, lists available tests, and allows you to run tests directly from the terminal with colorized output and live updates.
+![Screenshot](https://github.com/Aion-Studio/lazytestr/assets/15694731/9fa07094-60db-4a02-b327-7243ea144d9b)
+
 
 ## Features
 
