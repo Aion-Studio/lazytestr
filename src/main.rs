@@ -32,6 +32,11 @@ struct TestInfo {
     tests: Vec<String>,
 }
 
+enum Mode {
+    Normal,
+    Raw,
+}
+
 struct App {
     test_info: Vec<TestInfo>,
     selected_index: usize,
@@ -41,7 +46,7 @@ struct App {
     test_output: String,
     watch_mode: bool,
     debug_scroll: usize,
-
+    mode: Mode, // Add this line
     test_output_rx: Receiver<String>,
     test_output_tx: Sender<String>,
     gitignore: ignore::gitignore::Gitignore,
@@ -58,6 +63,7 @@ impl App {
             selected_test: 0,
             test_output_rx,
             test_output_tx,
+            mode: Mode::Raw,
             debug_logs: Vec::new(),
             test_output: String::new(),
             watch_mode: false,
@@ -65,6 +71,19 @@ impl App {
         };
         app.scan_for_tests(".")?;
         Ok(app)
+    }
+
+    fn toggle_mode(&mut self) {
+        self.mode = match self.mode {
+            Mode::Normal => {
+                disable_raw_mode().expect("Failed to disable raw mode");
+                Mode::Raw
+            }
+            Mode::Raw => {
+                enable_raw_mode().expect("Failed to enable raw mode");
+                Mode::Normal
+            }
+        };
     }
 
     fn scroll_debug(&mut self, amount: i32) {
@@ -133,7 +152,6 @@ impl App {
                     thread::spawn(move || {
                         let mut cmd = Command::new("cargo")
                             .args(&["test", &test_name, "--", "--nocapture"])
-                            .env("RUSTFLAGS", "-Awarnings")
                             .stdout(Stdio::piped())
                             .stderr(Stdio::piped())
                             .spawn()
@@ -246,6 +264,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         app.active_pane = (app.active_pane + 2) % 3;
                         redraw = true;
                     }
+
                     KeyCode::Char('l') => {
                         app.active_pane = (app.active_pane + 1) % 3;
                         redraw = true;
@@ -282,6 +301,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                         //todo
                     }
 
+                    KeyCode::Char('m') => {
+                        app.toggle_mode();
+                        redraw = true;
+                    }
+
                     _ => {}
                 }
             }
@@ -314,6 +338,8 @@ fn draw_ui(f: &mut tui::Frame<CrosstermBackend<std::io::Stdout>>, app: &App) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
         .split(chunks[0]);
 
+    let title_style = Style::default().fg(Color::White); // White color for titles
+
     let left_items: Vec<ListItem> = app
         .test_info
         .iter()
@@ -321,10 +347,11 @@ fn draw_ui(f: &mut tui::Frame<CrosstermBackend<std::io::Stdout>>, app: &App) {
         .map(|(i, info)| {
             let style = if i == app.selected_index && app.active_pane == 0 {
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Color::Black)
+                    .bg(Color::LightBlue) // Light blue background for highlighted item
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default()
+                Style::default().fg(Color::White)
             };
             ListItem::new(Spans::from(vec![Span::styled(
                 info.path.to_string_lossy(),
@@ -334,7 +361,16 @@ fn draw_ui(f: &mut tui::Frame<CrosstermBackend<std::io::Stdout>>, app: &App) {
         .collect();
 
     let left_list = List::new(left_items)
-        .block(Block::default().title("Test Files").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(Spans::from(vec![Span::styled("Test Files", title_style)]))
+                .borders(Borders::ALL)
+                .border_style(if app.active_pane == 0 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default().fg(Color::White)
+                }),
+        )
         .highlight_style(Style::default().add_modifier(Modifier::BOLD));
 
     f.render_widget(left_list, left_chunks[0]);
@@ -346,10 +382,11 @@ fn draw_ui(f: &mut tui::Frame<CrosstermBackend<std::io::Stdout>>, app: &App) {
             .map(|(i, test)| {
                 let style = if i == app.selected_test && app.active_pane == 1 {
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(Color::Black)
+                        .bg(Color::LightBlue) // Light blue background for highlighted item
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default()
+                    Style::default().fg(Color::White)
                 };
                 ListItem::new(Spans::from(vec![Span::styled(test, style)]))
             })
@@ -359,7 +396,16 @@ fn draw_ui(f: &mut tui::Frame<CrosstermBackend<std::io::Stdout>>, app: &App) {
     };
 
     let right_list = List::new(right_items)
-        .block(Block::default().title("Tests").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(Spans::from(vec![Span::styled("Tests", title_style)]))
+                .borders(Borders::ALL)
+                .border_style(if app.active_pane == 1 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default().fg(Color::White)
+                }),
+        )
         .highlight_style(Style::default().add_modifier(Modifier::BOLD));
 
     f.render_widget(right_list, left_chunks[1]);
@@ -377,30 +423,41 @@ fn draw_ui(f: &mut tui::Frame<CrosstermBackend<std::io::Stdout>>, app: &App) {
             Block::default()
                 .title(if !app.test_output.is_empty() {
                     if app.watch_mode {
-                        "Test Output (Watch Mode)"
+                        Spans::from(vec![Span::styled("Test Output (Watch Mode)", title_style)])
                     } else {
-                        "Test Output"
+                        Spans::from(vec![Span::styled("Test Output", title_style)])
                     }
                 } else {
-                    "Debug Log"
+                    Spans::from(vec![Span::styled("Debug Log", title_style)])
                 })
-                .borders(Borders::ALL),
+                .borders(Borders::ALL)
+                .border_style(if app.active_pane == 2 {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default().fg(Color::White)
+                }),
         )
         .wrap(tui::widgets::Wrap { trim: true })
-        .scroll((app.debug_scroll as u16, 0));
+        .scroll((app.debug_scroll as u16, 0))
+        .style(Style::default().fg(Color::White)); // White text color for output
 
     f.render_widget(bottom_paragraph, chunks[1]);
 
-    // Highlight the active pane
-    let highlight_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
-    match app.active_pane {
-        0 => f.render_widget(highlight_block, left_chunks[0]),
-        1 => f.render_widget(highlight_block, left_chunks[1]),
-        2 => f.render_widget(highlight_block, chunks[1]),
-        _ => {}
-    }
+    // Indicate the current mode
+    let mode_text = match app.mode {
+        Mode::Normal => "Mode: Normal (text selection enabled) - Press 'm' to switch",
+        Mode::Raw => "Mode: Raw (text selection disabled) - Press 'm' to switch",
+    };
+
+    let mode_paragraph = Paragraph::new(mode_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::White)),
+        )
+        .style(Style::default().fg(Color::White));
+
+    f.render_widget(mode_paragraph, chunks[0]);
 }
 
 fn format_test_output(output: &str) -> String {
