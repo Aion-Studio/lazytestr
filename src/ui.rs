@@ -4,6 +4,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use log::debug;
 use std::io;
 use tui::{
     backend::CrosstermBackend,
@@ -62,17 +63,8 @@ fn draw_test_files(f: &mut Frame<CrosstermBackend<io::Stdout>>, app: &App, area:
         })
         .collect();
 
-    let block = Block::default()
-        .title("Test Files")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(if app.active_pane == 0 {
-            Color::Rgb(255, 165, 0)
-        } else {
-            Color::White
-        }));
-
     let list = List::new(items)
-        .block(block)
+        .block(Block::default().title("Test Files").borders(Borders::ALL))
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol("> ");
 
@@ -97,17 +89,8 @@ fn draw_tests(f: &mut Frame<CrosstermBackend<io::Stdout>>, app: &App, area: Rect
         vec![ListItem::new("No tests found")]
     };
 
-    let block = Block::default()
-        .title("Tests")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(if app.active_pane == 1 {
-            Color::Rgb(255, 165, 0)
-        } else {
-            Color::White
-        }));
-
     let list = List::new(items)
-        .block(block)
+        .block(Block::default().title("Tests").borders(Borders::ALL))
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol("> ");
 
@@ -115,13 +98,26 @@ fn draw_tests(f: &mut Frame<CrosstermBackend<io::Stdout>>, app: &App, area: Rect
 }
 
 fn draw_test_output(f: &mut Frame<CrosstermBackend<io::Stdout>>, app: &App, area: Rect) {
-    let lines: Vec<&str> = app.test_output.lines().collect();
-    let start = lines.len().saturating_sub(area.height as usize);
-    let visible_lines = &lines[start..];
+    let visible_height = area.height as usize - 2; // Subtract 2 for the border
+    let total_lines = app.test_output.lines().count();
 
-    let output_lines: Vec<Spans> = visible_lines
-        .iter()
-        .map(|&line| {
+    let start_line = app
+        .output_scroll
+        .min(total_lines.saturating_sub(visible_height));
+
+    debug!(
+        "Drawing output: scroll={}, start_line={}, total_lines={}, visible_height={}",
+        app.output_scroll, start_line, total_lines, visible_height
+    );
+
+    let output_lines: Vec<Spans> = app
+        .test_output
+        .lines()
+        .skip(start_line)
+        .take(visible_height)
+        .enumerate()
+        .map(|(i, line)| {
+            debug!("Line {}: {}", start_line + i, line);
             let mut spans = Vec::new();
             let mut current_style = Style::default();
 
@@ -176,7 +172,10 @@ fn draw_test_output(f: &mut Frame<CrosstermBackend<io::Stdout>>, app: &App, area
         .collect();
 
     let block = Block::default()
-        .title("Test Output")
+        .title(format!(
+            "Test Output (Scroll: {}/{})",
+            app.output_scroll, total_lines
+        ))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(if app.active_pane == 2 {
             Color::Rgb(255, 165, 0)

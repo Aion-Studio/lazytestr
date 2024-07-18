@@ -1,4 +1,5 @@
 use crossterm::event::{self, Event, KeyCode};
+use log::debug;
 use std::error::Error;
 use std::path::PathBuf;
 
@@ -16,6 +17,7 @@ pub struct App {
     pub watch_mode: bool,
     pub output_scroll: usize,
     pub should_quit: bool,
+    output_height: usize,
 }
 
 impl App {
@@ -29,24 +31,21 @@ impl App {
             watch_mode: false,
             output_scroll: 0,
             should_quit: false,
+            output_height: 0,
         }
     }
 
-    pub fn handle_input(&mut self) -> Result<bool, Box<dyn Error>> {
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => self.should_quit = true,
-                    KeyCode::Char('w') => self.toggle_watch_mode(),
-                    KeyCode::Char('r') => return Ok(true), // Signal to rescan tests
-                    KeyCode::Enter => return Ok(true),     // Signal to run test
-                    //
-                    KeyCode::Char('h') => self.move_left(),
-                    KeyCode::Char('l') => self.move_right(),
-                    KeyCode::Char('j') | KeyCode::Char('k') => self.navigate_list(key.code),
-                    _ => {}
-                }
-            }
+    pub fn handle_input(&mut self, key: KeyCode) -> Result<bool, Box<dyn Error>> {
+        match key {
+            KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('w') => self.toggle_watch_mode(),
+            KeyCode::Char('r') => return Ok(true), // Signal to rescan tests
+            KeyCode::Enter => return Ok(true),     // Signal to run test
+            //
+            KeyCode::Char('h') => self.move_left(),
+            KeyCode::Char('l') => self.move_right(),
+            KeyCode::Char('j') | KeyCode::Char('k') => self.navigate_list(key),
+            _ => {}
         }
         Ok(false)
     }
@@ -81,6 +80,7 @@ impl App {
                     self.selected_index = self.selected_index.saturating_sub(1);
                 }
             }
+
             1 => {
                 if let Some(info) = self.test_info.get(self.selected_index) {
                     if key == KeyCode::Char('j') {
@@ -91,13 +91,32 @@ impl App {
                     }
                 }
             }
+
             2 => {
-                if key == KeyCode::Char('j') {
-                    self.output_scroll = self.output_scroll.saturating_add(1);
-                } else if key == KeyCode::Char('k') {
-                    self.output_scroll = self.output_scroll.saturating_sub(1);
+                let total_lines = self.test_output.lines().count();
+                let page_size = self.output_height.saturating_sub(2); // Subtract 2 for borders
+                match key {
+                    KeyCode::Char('j') if self.output_scroll < total_lines.saturating_sub(1) => {
+                        self.output_scroll += 1;
+                        debug!("Scrolled down. New scroll position: {}", self.output_scroll);
+                    }
+                    KeyCode::Char('k') if self.output_scroll > 0 => {
+                        self.output_scroll -= 1;
+                        debug!("Scrolled up. New scroll position: {}", self.output_scroll);
+                    }
+                    KeyCode::Char('d') => {
+                        self.output_scroll =
+                            (self.output_scroll + page_size).min(total_lines.saturating_sub(1));
+                        debug!("Page down. New scroll position: {}", self.output_scroll);
+                    }
+                    KeyCode::Char('u') => {
+                        self.output_scroll = self.output_scroll.saturating_sub(page_size);
+                        debug!("Page up. New scroll position: {}", self.output_scroll);
+                    }
+                    _ => {}
                 }
             }
+
             _ => {}
         }
     }
@@ -106,16 +125,25 @@ impl App {
         self.test_output.push_str(new_output);
         // Limit the total number of lines to prevent excessive memory usage
         let max_lines = 1000;
+
         let lines: Vec<&str> = self.test_output.lines().collect();
         if lines.len() > max_lines {
             self.test_output = lines[lines.len() - max_lines..].join("\n");
         }
+
+        // Automatically scroll to the bottom
+        let total_lines = self.test_output.lines().count();
+        self.output_scroll = total_lines.saturating_sub(self.output_height);
     }
 
-    pub fn update_scroll(&mut self, height: usize) {
+    pub fn update_output_height(&mut self, height: usize) {
+        self.output_height = height;
+    }
+
+    pub fn update_scroll(&mut self) {
         let total_lines = self.test_output.lines().count();
-        if total_lines > height {
-            self.output_scroll = total_lines - height;
+        if total_lines > self.output_height {
+            self.output_scroll = self.output_scroll.min(total_lines - 1);
         } else {
             self.output_scroll = 0;
         }

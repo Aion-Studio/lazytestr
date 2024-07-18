@@ -7,6 +7,7 @@ mod utils;
 
 use app::App;
 use config::setup_environment;
+use crossterm::event::{self, Event};
 use file_watcher::setup_file_watcher;
 use log::debug;
 use std::error::Error;
@@ -27,34 +28,39 @@ fn main() -> Result<(), Box<dyn Error>> {
     test_runner.scan_for_tests(&mut app, ".")?;
 
     loop {
+        let height = terminal.size()?.height as usize;
+        app.update_output_height(height - 2);
         // Handle test output
         while let Ok(output) = output_rx.try_recv() {
             app.add_test_output(&output);
             let height = terminal.size()?.height as usize;
-            app.update_scroll(height);
+            app.update_output_height(height - 2);
+            app.update_scroll();
         }
-
-        // Draw UI
-        terminal.draw(|f| draw(f, &mut app))?;
 
         // Handle input
-        let should_run_action = app.handle_input()?;
-
-        if app.should_quit {
-            break;
-        }
-
-        if should_run_action {
-            if app.active_pane == 1 {
-                debug!("Running selected test");
-                app.clear_test_output();
-                test_runner.run_test(&app)?;
-            } else if app.active_pane == 0 {
-                debug!("Rescanning for tests");
-                test_runner.scan_for_tests(&mut app, ".")?;
-                debug!("Rescan complete. Found {} test files", app.test_info.len());
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                let should_run_action = app.handle_input(key.code)?;
+                if app.should_quit {
+                    break;
+                }
+                if should_run_action {
+                    if app.active_pane == 1 {
+                        debug!("Running selected test");
+                        app.clear_test_output();
+                        test_runner.run_test(&app)?;
+                    } else if app.active_pane == 0 {
+                        debug!("Rescanning for tests");
+                        test_runner.scan_for_tests(&mut app, ".")?;
+                        debug!("Rescan complete. Found {} test files", app.test_info.len());
+                    }
+                }
             }
         }
+
+        terminal.draw(|f| draw(f, &mut app))?;
+        // let should_run_action = app.handle_input()?;
 
         // Handle file watcher events
         if app.watch_mode {
