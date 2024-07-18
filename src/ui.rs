@@ -99,25 +99,17 @@ fn draw_tests(f: &mut Frame<CrosstermBackend<io::Stdout>>, app: &App, area: Rect
 
 fn draw_test_output(f: &mut Frame<CrosstermBackend<io::Stdout>>, app: &App, area: Rect) {
     let visible_height = area.height as usize - 2; // Subtract 2 for the border
-    let total_lines = app.test_output.lines().count();
+    let total_lines = app.total_output_lines;
 
-    let start_line = app
-        .output_scroll
-        .min(total_lines.saturating_sub(visible_height));
-
-    debug!(
-        "Drawing output: scroll={}, start_line={}, total_lines={}, visible_height={}",
-        app.output_scroll, start_line, total_lines, visible_height
-    );
+    let start_line = app.output_scroll;
+    let end_line = (start_line + visible_height).min(total_lines);
 
     let output_lines: Vec<Spans> = app
         .test_output
         .lines()
         .skip(start_line)
-        .take(visible_height)
-        .enumerate()
-        .map(|(i, line)| {
-            debug!("Line {}: {}", start_line + i, line);
+        .take(end_line - start_line)
+        .map(|line| {
             let mut spans = Vec::new();
             let mut current_style = Style::default();
 
@@ -171,11 +163,14 @@ fn draw_test_output(f: &mut Frame<CrosstermBackend<io::Stdout>>, app: &App, area
         })
         .collect();
 
+    let scroll_indicator = if total_lines > visible_height {
+        format!("{}/{}", start_line + 1, total_lines)
+    } else {
+        format!("All")
+    };
+
     let block = Block::default()
-        .title(format!(
-            "Test Output (Scroll: {}/{})",
-            app.output_scroll, total_lines
-        ))
+        .title(format!("Test Output (Scroll: {})", scroll_indicator))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(if app.active_pane == 2 {
             Color::Rgb(255, 165, 0)

@@ -16,8 +16,9 @@ pub struct App {
     pub test_output: String,
     pub watch_mode: bool,
     pub output_scroll: usize,
+    pub output_height: usize,
+    pub total_output_lines: usize,
     pub should_quit: bool,
-    output_height: usize,
 }
 
 impl App {
@@ -32,6 +33,7 @@ impl App {
             output_scroll: 0,
             should_quit: false,
             output_height: 0,
+            total_output_lines: 0,
         }
     }
 
@@ -48,6 +50,32 @@ impl App {
             _ => {}
         }
         Ok(false)
+    }
+
+    pub fn update_output_height(&mut self, height: usize) {
+        self.output_height = height;
+        self.adjust_scroll();
+    }
+
+    pub fn scroll_to_bottom(&mut self) {
+        self.output_scroll = self.total_output_lines.saturating_sub(self.output_height);
+        self.adjust_scroll();
+    }
+
+    pub fn scroll_up(&mut self) {
+        if self.output_scroll > 0 {
+            self.output_scroll -= 1;
+        }
+    }
+
+    pub fn scroll_down(&mut self) {
+        self.output_scroll += 1;
+        self.adjust_scroll();
+    }
+
+    fn adjust_scroll(&mut self) {
+        let max_scroll = self.total_output_lines.saturating_sub(self.output_height);
+        self.output_scroll = self.output_scroll.min(max_scroll);
     }
 
     fn move_left(&mut self) {
@@ -96,14 +124,8 @@ impl App {
                 let total_lines = self.test_output.lines().count();
                 let page_size = self.output_height.saturating_sub(2); // Subtract 2 for borders
                 match key {
-                    KeyCode::Char('j') if self.output_scroll < total_lines.saturating_sub(1) => {
-                        self.output_scroll += 1;
-                        debug!("Scrolled down. New scroll position: {}", self.output_scroll);
-                    }
-                    KeyCode::Char('k') if self.output_scroll > 0 => {
-                        self.output_scroll -= 1;
-                        debug!("Scrolled up. New scroll position: {}", self.output_scroll);
-                    }
+                    KeyCode::Char('j') => self.scroll_down(),
+                    KeyCode::Char('k') => self.scroll_up(),
                     KeyCode::Char('d') => {
                         self.output_scroll =
                             (self.output_scroll + page_size).min(total_lines.saturating_sub(1));
@@ -125,19 +147,13 @@ impl App {
         self.test_output.push_str(new_output);
         // Limit the total number of lines to prevent excessive memory usage
         let max_lines = 1000;
-
         let lines: Vec<&str> = self.test_output.lines().collect();
         if lines.len() > max_lines {
             self.test_output = lines[lines.len() - max_lines..].join("\n");
         }
 
-        // Automatically scroll to the bottom
-        let total_lines = self.test_output.lines().count();
-        self.output_scroll = total_lines.saturating_sub(self.output_height);
-    }
-
-    pub fn update_output_height(&mut self, height: usize) {
-        self.output_height = height;
+        self.total_output_lines = self.test_output.lines().count();
+        self.scroll_to_bottom();
     }
 
     pub fn update_scroll(&mut self) {
