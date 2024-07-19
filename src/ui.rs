@@ -4,7 +4,6 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use log::debug;
 use std::io;
 use tui::{
     backend::CrosstermBackend,
@@ -63,8 +62,19 @@ fn draw_test_files(f: &mut Frame<CrosstermBackend<io::Stdout>>, app: &App, area:
         })
         .collect();
 
+    let border_style = if app.active_pane == 0 {
+        Style::default().fg(Color::Rgb(255, 165, 0))
+    } else {
+        Style::default().fg(Color::White)
+    };
+
     let list = List::new(items)
-        .block(Block::default().title("Test Files").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title("Test Files")
+                .borders(Borders::ALL)
+                .border_style(border_style),
+        )
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol("> ");
 
@@ -89,8 +99,19 @@ fn draw_tests(f: &mut Frame<CrosstermBackend<io::Stdout>>, app: &App, area: Rect
         vec![ListItem::new("No tests found")]
     };
 
+    let border_style = if app.active_pane == 1 {
+        Style::default().fg(Color::Rgb(255, 165, 0))
+    } else {
+        Style::default().fg(Color::White)
+    };
+
     let list = List::new(items)
-        .block(Block::default().title("Tests").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title("Tests")
+                .borders(Borders::ALL)
+                .border_style(border_style),
+        )
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol("> ");
 

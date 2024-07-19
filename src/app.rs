@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::KeyCode;
 use log::debug;
 use std::error::Error;
 use std::path::PathBuf;
